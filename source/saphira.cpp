@@ -35,6 +35,7 @@ void text_callback(GLFWwindow* window, unsigned int codepoint);
 
 TexHandler* texHandler;
 PlanetarySystem* solarSystem;
+double timeJulian;
 
 Window mainWindow = Window();
 GLFWwindow* window = mainWindow.getWindow();
@@ -66,7 +67,7 @@ int main() {
 	solarSystem->loadPlanets();
 
 	//set the start time to somewhere in the ephemeris table
-	double startTime = 2458359.500000000;
+	double startTime = 2459804.500000;
 	//update the solar system to given start time
 	solarSystem->curTime = startTime;
 	solarSystem->updatePlanetPositions(startTime);
@@ -99,7 +100,7 @@ int main() {
 	double prevTimeSeconds = glfwGetTime();
 
 	double dtimeSeconds;
-	double timeJulian = startTime;
+	timeJulian = startTime;
 
 	// Main Loop
 	while (!glfwWindowShouldClose(window)){
@@ -127,6 +128,7 @@ int main() {
 		
 		string timeStr = string(date);
 		mainCamera->gui->updateText("time", timeStr);
+		mainCamera->gui->updateReadouts();
 		//solarSystem->updateOrbitLines();
 
 		mainCamera->updateShaderUniforms();
@@ -140,6 +142,11 @@ int main() {
 		//end with GUI since it should be drawn over everything
 		mainCamera->drawFlare();
 
+		glClear(GL_DEPTH_BUFFER_BIT);
+
+		if(mainCamera->getCurMission()!=NULL)
+			mainCamera->getCurMission()->drawCraft();
+		
 		glClear(GL_DEPTH_BUFFER_BIT);
 		mainCamera->gui->draw();
 		//#### END DRAW ####
@@ -161,7 +168,9 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
 	//glfwSetCursorPos(window, (float)width / 2.0, (float)height / 2.0);
 	mainCamera->frameResize(width, height);
 	solarSystem->setUniform4dv("projection", mainCamera->getProjPtr());
-	
+	for(auto const& [name, mis] : solarSystem->missions){
+		mis->setUniform4dvCraft("projection", mainCamera->getCraftProjPtr());
+	}
 }
 
 void mouse_callback(GLFWwindow* window, double xpos, double ypos) {

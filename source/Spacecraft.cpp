@@ -1,43 +1,47 @@
 #include "Spacecraft.h"
 
+void aocsSoftware(vec3 position, vec3 velocity, mat3 attitude, vec3 angularVel, double julian, vec3& torqueOut, vec3& thrustOut){
+    torqueOut = vec3{0.0,0.0,0.0};
+    thrustOut = vec3{0.0,0.0,0.0};
+}
+
+
 spacecraftState Spacecraft::dynamicsEquation(double time, spacecraftState cs){
     spacecraftState ds;
-    ds.JDTDB = 1;
-    ds.position = cs.velocity;
+    ds.JDTDB = 1; // dt/dt
+    ds.position = cs.velocity; // dx/dt
     vec3 aocsTorque, aocsThrust;
-    //aocsSoftware(cs.position, cs.velocity, cs.attitude, cs.angularVel, time, &aocsTorque, &aocsThrust);
-    ds.angularVel = transpose(cs.inertialMat)*aocsThrust;
-    ds.mass = len(aocsThrust) / (this->ISP * 9.81);
-    vec3 omegaB = mat4reduce(qtomat4(cs.attitude))*cs.angularVel;
-    ds.attitude = quaternionCompose(vec4{omegaB[0],omegaB[1],omegaB[2],0.0}*0.5, cs.attitude);
-    ds.inertialMat = zeros3();
-    vec3 acceleration = this->motionEqnBarycentric(time, cs.position);
-    acceleration += qrot(aocsThrust, cs.attitude);
-    ds.velocity = acceleration;
+    aocsSoftware(cs.position, cs.velocity, cs.attitude, cs.angularVel, time, aocsTorque, aocsThrust);
+    ds.angularVel = transpose(cs.inertialMat)*aocsThrust;// dw/dt
+    ds.mass = len(aocsThrust) / (this->ISP * 9.81);// dm/dt
+    vec3 omegaB = cs.attitude*cs.angularVel;
+     ds.attitude = (cs.attitude* -1.0) * crossMat(cs.angularVel);
+    ds.inertialMat = zeros3();// dJ/dt
+    vec3 acceleration = this->motionEqnBarycentric(cs.JDTDB, cs.position);
+    //acceleration += qrot(aocsThrust, cs.attitude);
+    ds.velocity = acceleration;// dv/dt
     return ds;
 }
 
 vec3 Spacecraft::motionEqnBarycentric(double time, vec3 position) {
-    double unitConv = 86400.0*86400.0; // seconds/day
     vec3 acceleration = vec3{ 0.0,0.0,0.0 };
-
     for (auto const& [key, planet]: solarSystem->Planets) {
+        //cout << planet->name + ": " << (planet->calculateAbsoluteAccelerationFromPosition(time, position)) << endl;
         acceleration += planet->calculateAbsoluteAccelerationFromPosition(time, position);
         for (int j = 0; j < planet->children.size(); ++j) {
             acceleration += planet->children[j]->calculateAbsoluteAccelerationFromPosition(time, position);
         }
     }
-
     return acceleration;
 }
 Spacecraft::Spacecraft(string name, double startTime, vec3 startPos, vec3 startVel, string craftFile = "craft") {
     this->name = name;
     this->timeOfYeet = startTime;
-    texHandler->loadTexture("craft", true, false);
-    this->bodyMesh = new SceneObject("craft", startPos);
+    texHandler->loadTexture(name, true, false);
+    this->bodyMesh = new SceneObject(name, startPos);
     this->bodyMesh->setScale(5.0);
     
-    this->bodyMat = new Material("DS_1", "craft");
+    this->bodyMat = new Material("DS_1", name);
     this->bodyMat->addObj(this->bodyMesh);
     this->position = startPos;
     this->velocity = startVel;
@@ -74,6 +78,11 @@ void Spacecraft::setPosition(vec3 pos) {
 void Spacecraft::setVelocity(vec3 vel) {
     this->velocity = vel;
 }
+void Spacecraft::setAttitude(mat3 q){
+    this->attitude = q;
+    if (bodyMesh!= NULL)
+        this->bodyMesh->setAttitude(mat3expand(q));
+}
 	
 double Spacecraft::getMass(){
     return this->mass;
@@ -90,17 +99,16 @@ double Spacecraft::getYote(){
 void Spacecraft::propagate(double initTime, double deltaTime, double tolerance) {
     this->timeOfYeet = initTime;
     this->timeOfYote = initTime + deltaTime;
-    double unitConv = 86400.0;
     printf("Beginning spacecraft propagation. Working...");
     spacecraftState odeInput;
-    odeInput.position = this->position;
-    odeInput.velocity = this->velocity;
+    odeInput.position = this->position; cout << position << endl;
+    odeInput.velocity = 86400.0*this->velocity; cout << velocity << endl;
     odeInput.JDTDB = initTime;
     odeInput.attitude = {0.0,0.0,0.0,1.0};
-    odeInput.angularVel = {0.0,0.0,0.0};
+    odeInput.angularVel = 86400.0*vec3{0.01,0.0,0.0};
     odeInput.inertialMat = eye3();
     odeInput.mass = 1000.0;
-    vec3_rkf45_sc(odeInput, deltaTime, tolerance, solver, &propagationData);
+    //vec3_rkf45_sc(odeInput, deltaTime, tolerance, solver, &propagationData);
     printf(" done!\n");
     
     /*  MOVE TO SAVE TO FILE FUNCTION LATER
@@ -253,55 +261,33 @@ void Spacecraft::updateOrbitLines(PlanetaryBody* parent){
 }
 
 void Spacecraft::interpToTime(double julian) {
-    state newState = interpEphIndex(julian);
+    spacecraftState newState = interpEphIndex(julian);
     this->setPosition(newState.position);
     this->setVelocity(newState.velocity);
+    this->setAttitude(newState.attitude);
+
 }
 
-state Spacecraft::interpEphIndex(double julian) {
-    if (julian >= propagationData[curEphIndex].JDTDB && julian < propagationData[curEphIndex + 1].JDTDB) {
-        return interpbodyState(propagationData[curEphIndex], propagationData[curEphIndex + 1], julian);
-    }
-    else if (julian >= propagationData[curEphIndex + 1].JDTDB && julian < propagationData[curEphIndex + 2].JDTDB) {
-        curEphIndex += 1;
-        return interpbodyState(propagationData[curEphIndex], propagationData[curEphIndex + 1], julian);
-    }
-    else {
-        updateCurEphIndex(julian);
-        interpEphIndex(julian);
-    }
-    state defState;
-    return defState;
-}
+spacecraftState Spacecraft::interpEphIndex(double julian) {
+    unsigned long min, max, mid;
+    min = 0;
+    max = propagationData.size()-1;
+    
+    // a quick and dirty binary searching algorithm to find
+    // the appropriate states to interpolate for the given time
+    spacecraftState retState;
+    while( max-min > 1){
+        mid = (max+min)/2;
 
-void Spacecraft::updateCurEphIndex(double julian) {
-    bool overflow = true;
-    unsigned int ephSize =  - 1;
-    for (unsigned int i = 0; i < propagationData.size(); ++i) {
-        if (julian >= propagationData[i].JDTDB && julian < propagationData[i+1].JDTDB) {
-            curEphIndex = i;
-            overflow = false;
-            break;
+        if(propagationData[mid].JDTDB > julian){
+            max = mid;
+        }
+        else{
+            min = mid;
         }
     }
-    if (overflow) {
-        cout << "REACHED END OF EPHEMERIS DATA FOR SPACECRAFT. Julian time: " << julian << " Breaking out." << endl;
-        exit(0);
-    }
-}
 
-state Spacecraft::interpbodyState(state ps1, state ps2, double julian)
-{
-    state returnState;
-    returnState.JDTDB = julian;
-    double timeFrac = (julian - ps1.JDTDB) / (ps2.JDTDB - ps1.JDTDB);
-    double slopeFac = abs(ps2.JDTDB - ps1.JDTDB);
-    double posx = cubicInterpolation(ps1.position[0], ps2.position[0], slopeFac*ps1.velocity[0], slopeFac*ps2.velocity[0], timeFrac);
-    double posy = cubicInterpolation(ps1.position[1], ps2.position[1], slopeFac*ps1.velocity[1], slopeFac*ps2.velocity[1], timeFrac);
-    double posz = cubicInterpolation(ps1.position[2], ps2.position[2], slopeFac*ps1.velocity[2], slopeFac*ps2.velocity[2], timeFrac);
-    returnState.velocity = timeFrac * (ps2.velocity - ps1.velocity) + ps1.velocity;
-    returnState.position = vec3{ posx, posy, posz };
-    return returnState;
+    return interpScState(propagationData[min], propagationData[max], julian);
 }
 
 void Spacecraft::draw() {

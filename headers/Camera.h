@@ -39,6 +39,7 @@ private:
 
 	PlanetaryBody* curBody = NULL;
 	Spacecraft* curCraft = NULL;
+	Mission* curMission = NULL;
 	SceneObject* curMesh = NULL;
 	int planetIndex = 0;
 	int moonIndex = 0;
@@ -81,6 +82,12 @@ public:
 	PlanetaryBody* getCurBody(){
 		return this->curBody;
 	}
+	SceneObject* getCurMesh(){
+		return this->curMesh;
+	}
+	Mission* getCurMission(){
+		return this->curMission;
+	}
 	
 	double getSimSpeed();
 	int getWinWidth(){
@@ -113,6 +120,8 @@ public:
 	
 	void selectBody(PlanetaryBody* body);
 	void selectBody(Spacecraft* craft);
+	void selectMission(Mission* mission);
+	void selectStage(substage stg);
 
 	// END GUI CALLBACK FUNCTIONS----------------------
 

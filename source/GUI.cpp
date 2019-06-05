@@ -964,12 +964,23 @@ void GUI::initializeComponents() {
 		this->textMap.erase("infoPanelRadP");
 		this->textMap.erase("infoPanelRadE");
 		this->textMap.erase("infoPanelObla");
+		this->textMap.erase("infoPanelVelocity");
+		this->textMap.erase("infoPanelOmega");
+		this->textMap.erase("infoPanelThrust");
+
+		for(auto const& [name, mis] : solarSystem->missions){
+			int i = 1;
+			for(auto const& stg : mis->stages){
+				this->deleteButton("SCbutton_"+name+"_"+std::to_string(i));
+				++i;
+			}
+		}
 	};
 
 	std::function<void(PlanetaryBody*)> planetSelectCall = [this, clearInfoPanel](PlanetaryBody* planet){
 		std::wstring_convert<codecvt<char32_t,char,std::mbstate_t>,char32_t> convert32;	
 		clearInfoPanel();
-	SpiceInt randi; SpiceBoolean randb; SpiceInt id; SpiceDouble mu, j2; SpiceDouble radius[3];
+		SpiceInt randi; SpiceBoolean randb; SpiceInt id; SpiceDouble mu, j2; SpiceDouble radius[3];
 		bodn2c_c(planet->name.c_str(), &id, &randb);
 		bodvcd_c(id, "GM", 1, &randi, &mu); 
 		bodvcd_c(id, "RADII",3,&randi, radius);
@@ -1014,6 +1025,27 @@ void GUI::initializeComponents() {
 		clearInfoPanel();
 		this->parentCam->selectBody(solarSystem->spacecrafts[index]);
 	};
+	std::function<void(substage)> stageSelectFunc = [this,clearInfoPanel](substage stg){
+		std::wstring_convert<codecvt<char32_t,char,std::mbstate_t>,char32_t> convert32;	
+		this->parentCam->selectStage(stg);
+		this->textMap["infoPanelName"] = GUIText(convert32.from_bytes(capitalize(stg.name)), vec2{125.0, -175.0}, GUI_POS_UPPER_LEFT, GUI_TEXT_ANCHOR_MID, 0.5);
+		this->textMap["infoPanelMass"] = GUIText(convert32.from_bytes("Mass "), vec2{15.0, -200.0}, GUI_POS_UPPER_LEFT, GUI_TEXT_ANCHOR_LEFT,0.25);
+		this->textMap["infoPanelVelocity"] = GUIText(convert32.from_bytes("Vel"), vec2{15.0, -215.0}, GUI_POS_UPPER_LEFT, GUI_TEXT_ANCHOR_LEFT,0.25);
+		this->textMap["infoPanelOmega"] = GUIText(convert32.from_bytes("Omega"), vec2{15.0, -245.0}, GUI_POS_UPPER_LEFT, GUI_TEXT_ANCHOR_LEFT,0.25);
+		this->textMap["infoPanelThrust"] = GUIText(convert32.from_bytes("Thrust"), vec2{15.0, -230.0}, GUI_POS_UPPER_LEFT, GUI_TEXT_ANCHOR_LEFT,0.25);
+
+	};
+	std::function<void(string)> missionSelectFunc = [this, clearInfoPanel, stageSelectFunc](string index){
+		clearInfoPanel();
+		this->parentCam->selectMission(solarSystem->missions[index]);
+
+		int i = 1;
+		for(auto const& stg : solarSystem->missions[index]->substages){
+			this->createButton([this, stageSelectFunc,stg](){stageSelectFunc(stg);}, "SCbutton_LSPEAR_"+std::to_string(i), "SCsmall.png", vec2{ -25.0,-25.0 }, vec2{ 25.0,25.0 }, vec2{-30.0+75.0*i, -130.0}, GUI_POS_UPPER_LEFT );
+			++i;
+		}
+	};
+	
 	std::function<void(string)> scExitFunc = [this](string index){
 		this->parentCam->selectBody(solarSystem->spacecrafts.at(index)->parentBody);
 
@@ -1394,11 +1426,239 @@ void GUI::initializeComponents() {
 		this->createButton(createRVFunc, "createRV", "createRV.png", vec2{ -50.0,-12.5 }, vec2{ 50.0,12.5 }, vec2{0.0, -180.0}, GUI_POS_MID_MID, 1.0);
 		this->deleteButton("createOE");
 	};
-
-
+	std::function<void(double)> jumpToTimeButton = [this](double dt){
+		timeJulian = dt;
+		solarSystem->updateOrbitLines();
+	};
+	// AOCS MANEUVERS
+	//delta V in m/s
+	vector<maneuver> FullStackManeuvers;
+	vector<maneuver> SpentCentaurManeuvers;
 	
+	vector<maneuver> OrbLanderManeuvers;
+	OrbLanderManeuvers.push_back({Normalize(vec3{-1.0,1.0,-0.6}), 1000.0, 6.8});
+	OrbLanderManeuvers.push_back({Normalize(vec3{0.0,3.0,-3.0}),40.0, 3.7}); 
+
+	vector<maneuver> OrbiterManeuvers;
+	vector<maneuver> LanderManeuvers;
+	//LanderManeuvers.push_back({Normalize(vec3{-1.0,1.0,0.8}), 1000.0, 0.067});
+	LanderManeuvers.push_back({Normalize(vec3{-1.0,1.0,0.0}), 1650.0, 0.06009200029});
+	LanderManeuvers.push_back({Normalize(vec3{1.0,-1.0,0.0}), 390.0, 0.01929400023});
+	
+
+	// AOCS SOFTWARE FUNCTIONS
+
+	// Full stack function (doesnt do anything. This will just be a short time before centaur decouopling)
+	aocsFun FullStackSoftware = [](Stage* stg, spacecraftState cs, double julian, vec3& torqueOut, vec3& thrustOut, bool& firing)
+	{void();};
+
+	// Spent centaur function (also does not do anything. The centaur should just do the lunar flyby from its finished trajectory)
+	aocsFun SpentCentaurSoftware = [](Stage* stg, spacecraftState cs, double julian, vec3& torqueOut, vec3& thrustOut, bool& firing)
+	{void();};
+
+	// Orbiter + Lander Stage function (maintain Sun pointing except during firing)
+	aocsFun OrbLanderSoftware = [](Stage* stg, spacecraftState cs, double julian, vec3& torqueOut, vec3& thrustOut, bool& firing)
+	{	
+		double Kd = 50000.0;
+		double Kp = 500000000.0;
+		statevec parentState = solarSystem->Planets["sun"]->getStateAtTime(julian);
+		//vec3 bx = Normalize(cs.velocity - parentState[1]*86400.0);
+		vec3 bx = Normalize(parentState[0] - cs.position);
+		thrustOut = vec3{0.0,0.0,0.0};
+		if(stg->maneuvers.size() > 0){
+			maneuver nextManeuver = stg->maneuvers[stg->maneuvers.size()-1];
+			double deltaT;
+			if(stg->firing){
+				deltaT = stg->fireDurationTemp;
+			}
+			else{
+				double m0 = cs.mass;
+				double massRatio = exp(nextManeuver.deltaV / (stg->specificImpulse*9.81));
+				double mf = m0/massRatio;
+				deltaT = ((m0-mf)/stg->maxMdot)/(2.0*86400.0);
+				stg->fireDurationTemp = deltaT;
+			}
+			
+			if(julian > nextManeuver.SET+stg->getYeet() + deltaT + 0.001){
+				stg->maneuvers.pop_back();
+				stg->firing = false;
+			}
+			else if(julian > nextManeuver.SET+stg->getYeet() - deltaT - 0.001){
+				bx = Normalize(nextManeuver.axis);
+				if(julian > nextManeuver.SET+stg->getYeet() - deltaT && julian < nextManeuver.SET+stg->getYeet() + deltaT){
+					firing = true;
+					thrustOut = vec3{stg->maxThrust, 0.0, 0.0};
+				}
+			}
+		}
+
+		vec3 by = Normalize(Cross(bx, vec3{0.0,0.0,1.0}));
+		vec3 bz = Normalize(Cross(bx,by));
+		// Nominal attitude from inertial to body
+		mat3 Tnom = mat3{bx,by,bz};
+		
+		// Nominal angular velocity in inertial coordinates
+		//vec3 wnom = vec3{0.0,0.0,radians(1.0/86400.0)};  // rad/day in inertial coordinates
+		vec3 wnom = vec3{0.0,0.0,0.0};
+		// rotation matrix from current to desired attitude
+		mat3 dT = cs.attitude * transpose(Tnom);
+
+		vec3 dw = cs.angularVel - wnom;
+
+		vec3 e = -0.5*vec3{dT[2][1]-dT[1][2],dT[0][2]-dT[2][0],dT[1][0]-dT[0][1]};
+		vec3 de = dw - crossMat(cs.angularVel)*e;
+
+		vec3 u = -Kd*de - Kp*e;
+		torqueOut = cs.inertialMat*u;
+		//torqueOut =  vec3{0.0,0.0,0.0};
+	};
+
+	// Post-staged Orbiter
+	aocsFun OrbiterSoftware = [](Stage* stg, spacecraftState cs, double julian, vec3& torqueOut, vec3& thrustOut, bool& firing)
+	{void();};
+
+	//Post-staged Lander
+	aocsFun LanderSoftware = [](Stage* stg, spacecraftState cs, double julian, vec3& torqueOut, vec3& thrustOut, bool& firing)
+	{
+		double Kd = 50000.0;
+		double Kp = 500000000.0;
+		statevec lunaState = solarSystem->Planets["earth"]->children[0]->getStateAtTime(julian);
+		statevec earthState = solarSystem->Planets["earth"]->getStateAtTime(julian);
+		lunaState[0] = earthState[0] + lunaState[0];
+		lunaState[1] = earthState[1] + lunaState[1];
+		//vec3 bx = Normalize(cs.velocity - parentState[1]*86400.0);
+		vec3 v = cs.velocity/86400.0;
+		vec3 bx = Normalize(earthState[0] - cs.position);
+		thrustOut = vec3{0.0,0.0,0.0};
+		if(stg->maneuvers.size() > 0){
+			maneuver nextManeuver = stg->maneuvers[stg->maneuvers.size()-1];
+			double deltaT;
+			if(stg->firing){
+				deltaT = stg->fireDurationTemp;
+			}
+			else{
+				double m0 = cs.mass;
+				double massRatio = exp(nextManeuver.deltaV / (stg->specificImpulse*9.81));
+				double mf = m0/massRatio;
+				deltaT = ((m0-mf)/stg->maxMdot)/(2.0*86400.0);
+				stg->fireDurationTemp = deltaT;
+			}
+			
+			if(julian > nextManeuver.SET+stg->getYeet() + deltaT + 0.001){
+				stg->maneuvers.pop_back();
+				stg->firing = false;
+			}
+			else if(julian > nextManeuver.SET+stg->getYeet() - deltaT - 0.001){
+				bx = Normalize(nextManeuver.axis);
+				if(julian > nextManeuver.SET+stg->getYeet() - deltaT && julian < nextManeuver.SET+stg->getYeet() + deltaT){
+					firing = true;
+					thrustOut = vec3{stg->maxThrust, 0.0, 0.0};
+				}
+			}
+		}
+		//vec3 bx = Normalize(v - lunaState[1]);
+		//vec3 bz = Normalize(Cross(bx,lunaState[0] - cs.position));
+		//vec3 by = Normalize(Cross(bz, bx));
+		
+		
+		vec3 by = Normalize(Cross(bx, vec3{0.0,0.0,1.0}));
+		vec3 bz = Normalize(Cross(bx,by));
+
+		// Nominal attitude from inertial to body
+		mat3 Tnom = mat3{bx,by,bz};
+		
+		// Nominal angular velocity in inertial coordinates
+		//vec3 wnom = vec3{0.0,0.0,radians(1.0/86400.0)};  // rad/day in inertial coordinates
+		vec3 wnom = vec3{0.0,0.0,0.0};
+		// rotation matrix from current to desired attitude
+		mat3 dT = cs.attitude * transpose(Tnom);
+
+		vec3 dw = cs.angularVel - wnom;
+
+		vec3 e = -0.5*vec3{dT[2][1]-dT[1][2],dT[0][2]-dT[2][0],dT[1][0]-dT[0][1]};
+		vec3 de = dw - crossMat(cs.angularVel)*e;
+
+		vec3 u = -Kd*de - Kp*e;
+		torqueOut = cs.inertialMat*u;
+		//torqueOut =  vec3{0.0,0.0,0.0};
+	};
+
+	vector<aocsFun> Softwares;
+	Softwares.push_back(LanderSoftware);
+	Softwares.push_back(OrbiterSoftware);
+	Softwares.push_back(OrbLanderSoftware);
+	Softwares.push_back(SpentCentaurSoftware);
+	Softwares.push_back(FullStackSoftware);
+
+	vector<vector<maneuver>> Maneuvers;
+	Maneuvers.push_back(LanderManeuvers);
+	Maneuvers.push_back(OrbiterManeuvers);
+	Maneuvers.push_back(OrbLanderManeuvers);
+	Maneuvers.push_back(SpentCentaurManeuvers);
+	Maneuvers.push_back(FullStackManeuvers);
+
+	//-----------Button to create mission--------------
+	this->createButton([this, missionSelectFunc, Softwares, Maneuvers](){
+		std::wstring_convert<codecvt<char32_t,char,std::mbstate_t>,char32_t> convert32;	
+		//this->buttonMap.at("addMission")->enabled = false;
+		//this->createStaticBox("createSC", vec2{-250.0, -200.0}, vec2{250.0, 300.0}, vec2{0.0,0.0}, GUI_POS_MID_MID);
+
+		spacecraftState lspearState;
+
+		statevec rv = oe2rv(vec6{210000.0, 0.96, radians(1.6), radians(180+76), radians(180+167.0), 0.0}, solarSystem->Planets.at("earth")->properties.at("GM"));
+		lspearState.position = rv[0]+solarSystem->Planets.at("earth")->getPosition();
+		lspearState.velocity = rv[1]+solarSystem->Planets.at("earth")->getVelocity();;
+		lspearState.velocity = 86400.0*lspearState.velocity;
+		lspearState.inertialMat = eye3()*500.0;
+		lspearState.JDTDB = solarSystem->curTime;
+		lspearState.mass = 0.0;
+
+
+		double julian = solarSystem->curTime;
+		vec3 sunPos = solarSystem->Planets["sun"]->getStateAtTime(julian)[0];
+		vec3 bx = Normalize(rv[1]);
+		vec3 by = Normalize(Cross(bx, vec3{0.0,0.0,1.0}));
+		vec3 bz = Normalize(Cross(bx,by));
+		// Nominal attitude from inertial to body
+		mat3 AttNom = (mat3{bx,by,bz});
+		lspearState.attitude = AttNom;
+
+		Mission* newMission = new Mission("LSPEAR", lspearState, Softwares, Maneuvers);
+
+		stageEvent centaurStg, orbiterStg, landerStg;
+		landerStg.type = "SET";
+		landerStg.value = 0.08;
+		newMission->addSubstage("Lander", 3500.0, 100.0, -0.00065, 0.00045, 327.0, 12000.0, 1.5*3.0, eye3()*300.0,landerStg);
+		orbiterStg.type = "SET";
+		orbiterStg.value = 6.85;
+		newMission->addSubstage("Orbiter",1500.0, 500.0, -0.0015, 0.00075, 293.0, 4000.0, 1.4, eye3()*800.0, orbiterStg);
+		centaurStg.type = "SET";
+		centaurStg.value = 0.05;
+		newMission->addSubstage("Centaur",4954.0, 4954.0, -0.006, 0.004, 450.0, 99200.0, 24.1, eye3()*1500.0,centaurStg);
+		
+		//newMission->createStages();
+		newMission->propagate(7.25);
+
+		newMission->stages[0]->genOrbitLines(solarSystem->Planets.at("earth"));
+		newMission->stages[1]->genOrbitLines(solarSystem->Planets.at("earth"));
+		newMission->stages[2]->genOrbitLines(solarSystem->Planets.at("earth")->children[0]);
+		newMission->stages[3]->genOrbitLines(solarSystem->Planets.at("earth")->children[0]);
+		newMission->stages[4]->genOrbitLines(solarSystem->Planets.at("earth")->children[0]);
+
+		newMission->setUniform4dv("projection", this->parentCam->getProjPtr());
+		newMission->setUniform4dvCraft("projection", this->parentCam->getCraftProjPtr());
+		
+		solarSystem->updatePlanetPositions(solarSystem->curTime);
+
+		this->createButton([this, missionSelectFunc](){missionSelectFunc("LSPEAR");}, "SCbutton_LSPEAR", "scButton.png", vec2{ -87.5,-25.0 }, vec2{ 87.5,25.0 }, vec2{-125.0, -80.0}, GUI_POS_UPPER_RIGHT );
+
+	}, "addMission", "add_spacecraft.png", vec2{ -50.0,-12.5 }, vec2{ 50.0,12.5 }, vec2{ -125.0, -20.0 }, GUI_POS_UPPER_RIGHT, 2.0 );
+	this->createButton([this,jumpToTimeButton](){jumpToTimeButton(2459804.500000+6.805);}, "T1", "scSettings.png", vec2{ -25.0,-25.0 }, vec2{ 25.0,25.0 }, vec2{25.0, 25.0}, GUI_POS_BOTTOM_LEFT);
+	this->createButton([this,jumpToTimeButton](){jumpToTimeButton(2459804.500000+7.0);}, "T2", "scSettings.png", vec2{ -25.0,-25.0 }, vec2{ 25.0,25.0 }, vec2{75.0, 25.0}, GUI_POS_BOTTOM_LEFT);
+	this->createButton([this,jumpToTimeButton](){jumpToTimeButton(2459804.500000+7.1);}, "T3", "scSettings.png", vec2{ -25.0,-25.0 }, vec2{ 25.0,25.0 }, vec2{125.0, 25.0}, GUI_POS_BOTTOM_LEFT);
 	
 	//-----------BUTTON TO CREATE SPACECRAFT --------- (very recursive)
+	/*
 	this->createButton([this, createOEFunc, createRVFunc, oeSelButton, rvSelButton, texIdOn, texIdOff](){
 		std::wstring_convert<codecvt<char32_t,char,std::mbstate_t>,char32_t> convert32;	
 
@@ -1432,7 +1692,7 @@ void GUI::initializeComponents() {
 		this->textInputs["ain"]->textToDraw = "200000";
 		this->textInputs["ein"]->textToDraw = "0.96";
 		this->textInputs["iin"]->textToDraw = "18";
-		this->textInputs["Oin"]->textToDraw = "65";
+		this->textInputs["Oin"]->textToDraw = "69";
 		this->textInputs["win"]->textToDraw = "167";
 		this->textInputs["nin"]->textToDraw = "0";
 		this->textMap["tempA"] = GUIText(U"a",      vec2{ -240.0, 100.0}, GUI_POS_MID_MID, GUI_TEXT_ANCHOR_MID, 0.35);
@@ -1456,9 +1716,9 @@ void GUI::initializeComponents() {
 		}
 
 		this->selectorMap.at("tempParent")->setActiveElem(convert32.from_bytes(this->parentCam->getCurBody()->name));
-
+		this->selectorMap.at("tempOrbParent")->setActiveElem(convert32.from_bytes(this->parentCam->getCurBody()->name));
 		//FOR TESTING ONLY. DELETE
-		this->selectorMap.at("tempOrbParent")->setActiveElem(U"moon"); 
+		//this->selectorMap.at("tempOrbParent")->setActiveElem(U"moon"); 
 
 		this->createInput("durin", vec2{-90.0, -15.0}, vec2{90.0, 15.0}, vec2{-180.0, -40.0}, GUI_POS_MID_MID, 0.5);
 		this->textInputs["durin"]->textToDraw = "10";
@@ -1468,7 +1728,7 @@ void GUI::initializeComponents() {
 		
 
 	}, "addSpacecraft", "add_spacecraft.png",vec2{ -50.0,-12.5 }, vec2{ 50.0,12.5 }, vec2{ -125.0, -20.0 }, GUI_POS_UPPER_RIGHT, 2.0 );
-	
+	*/
 
 	// function layout:
 	//createButton(callbackPtr callbackFunc, string key, string texPath, vec2 bb_ll, vec2 bb_ru, vec2 offset, int location, float scale) {
@@ -1626,6 +1886,28 @@ void GUI::setCurParent(Spacecraft * body) {
 	this->curBody = NULL;
 	this->curCraft = body;
 	string name = this->curCraft->name;
+}
+
+void GUI::updateReadouts(){
+	Mission* mis = this->parentCam->getCurMission();
+	Stage* curStg = NULL;
+	if(mis != NULL){
+		for(auto const& stg : mis->stages){
+			if(stg->shouldDraw){
+				for(auto const& substg : stg->substages){
+					if(this->parentCam->getCurMesh() == substg.obj){
+						curStg = stg;
+					}
+				}
+			}
+		}
+	}
+	if(curStg!=NULL){
+		this->updateText("infoPanelMass", "Mass: "+std::to_string(curStg->curMass)+ " kg");
+		this->updateText("infoPanelThrust", "Thrust: "+std::to_string(curStg->curThrust) + " N");
+		this->updateText("infoPanelOmega", "Angular Velocity: "+std::to_string(len(curStg->position - solarSystem->Planets["earth"]->children[0]->position)) + " rad/s");
+		this->updateText("infoPanelVelocity", "Orbital Velocity: "+std::to_string(len(curStg->curVel - curStg->parentBody->velocity)) + " km/s");
+	}
 }
 
 // Text functions

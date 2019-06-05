@@ -18,6 +18,7 @@
 #include "Spacecraft.h"
 #include "Camera.h"
 #include "stb_image.h"
+#include "Mission.h"
 
 
 #include FT_FREETYPE_H  
@@ -257,6 +258,7 @@ public:
 	void setCurParent(Spacecraft* body);
 
 	//
+	void updateReadouts();
 
 	// Text functions
 	void createText(string key, GUIText textStruc);

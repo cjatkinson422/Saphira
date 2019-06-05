@@ -1,7 +1,7 @@
 #Makefile to test the program
 
 INC = -g -I./include -I./headers -std=c++17
-INC_C = -I ./include -I ./headers
+INC_C = -g -I ./include -I ./headers
 TST = -lglfw3 -lfreetype
 FRM = -lbz2 -lz -Iglfw3/include/ -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
 
@@ -9,6 +9,8 @@ default: executable
 
 saphira.o: source/saphira.cpp headers/*.h
 	g++ -c $(INC) source/saphira.cpp
+Mission.o: source/Mission.cpp headers/*.h
+	g++ -c $(INC) source/Mission.cpp
 Material.o: source/Material.cpp headers/*.h
 	g++ -c $(INC) source/Material.cpp
 TexHandler.o: source/TexHandler.cpp headers/*.h
@@ -23,9 +25,11 @@ Spacecraft.o: source/Spacecraft.cpp headers/*.h
 	g++ -c $(INC) source/Spacecraft.cpp
 glad.o: source/glad.c
 	gcc -c $(INC_C) source/glad.c
+OdeSolver.o: source/OdeSolver.cpp headers/*.h
+	g++ -c $(INC) source/OdeSolver.cpp
 
-executable: saphira.o Material.o Planet.o TexHandler.o Camera.o GUI.o glad.o Spacecraft.o
-	g++ $(INC) $(FRM) Camera.o GUI.o saphira.o Material.o Planet.o TexHandler.o Spacecraft.o glad.o libs/libfreetype.a libs/libglfw3.a libs/cspice.a
+executable: saphira.o Material.o Planet.o TexHandler.o Camera.o GUI.o glad.o Spacecraft.o Mission.o OdeSolver.o
+	g++ $(INC) $(FRM) Camera.o GUI.o saphira.o Material.o Planet.o TexHandler.o Spacecraft.o Mission.o OdeSolver.o glad.o libs/libfreetype.a libs/libglfw3.a libs/cspice.a
 	mv a.out saphira.app/Contents/MacOs/mainApp
 
 clean:

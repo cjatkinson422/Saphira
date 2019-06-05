@@ -23,4 +23,5 @@ class TexHandler;
 extern PlanetarySystem* solarSystem;
 extern TexHandler* texHandler;
 extern double SOLAR_MU;
+extern double timeJulian;
 

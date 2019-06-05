@@ -6,10 +6,12 @@
 #include "SceneObject.h"
 #include "Material.h"
 #include "Spacecraft.h"
+#include "Mission.h"
 
 # define PI  3.14159265358979323846
 
 class Spacecraft;
+class Mission;
 
 struct bodyState {
 	double JDTDB;
@@ -31,6 +33,7 @@ public:
 	PlanetarySystem();
 
 	std::map<string, Spacecraft*> spacecrafts;
+	std::map<string, Mission*> missions;
 
 	void loadPlanets();
 
@@ -44,6 +47,7 @@ public:
 	void setUniformV3(const char* uniformName, vec3 vec);
 
 	double getClosestPlanetDistance(vec3 position);
+	PlanetaryBody* getSOI(vec3 position, double julian);
 
 	void updatePlanetPositions(double julian);
 

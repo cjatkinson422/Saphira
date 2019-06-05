@@ -28,6 +28,7 @@ extern int intcnt;
 double radians(double degrees);
 double degrees(double radians);
 mat4 Mat4Mult(mat4 &m1, const mat4 &m2);
+mat3 Mat3Mult(mat3 &m1, mat3 &m2);
 void mat4print(mat4 mat);
 void vec4print(vec4 vec);
 vec4 Mat4Vec(mat4 m, vec4 v);
@@ -44,6 +45,9 @@ vec3 Cross(vec3 v1, vec3 v2);
 inline mat4 operator*(mat4 m1, mat4 m2) {
 	return Mat4Mult(m1, m2);
 }
+inline mat3 operator*(mat3 m1, mat3 m2){
+	return Mat3Mult(m1,m2);
+}
 inline mat3 operator*(mat3 m, double d){
 	return mat3{
 		vec3{m[0][0]*d, m[0][1]*d, m[0][2]*d},
@@ -51,18 +55,18 @@ inline mat3 operator*(mat3 m, double d){
 		vec3{m[2][0]*d, m[2][1]*d, m[2][2]*d}
 	};
 }
-inline mat3 operator+(const mat3 &m1, const mat3 &m2){
+inline mat3 operator+( mat3 m1,  mat3 m2){
 	return mat3{
-		vec3{m1[0][0]+m2[1][0], m1[0][1]+m2[1][1], m1[0][2]+m2[1][2]},
-		vec3{m1[1][0]+m2[2][0], m1[1][1]+m2[2][1], m1[1][2]+m2[2][2]},
-		vec3{m1[2][0]+m2[3][0], m1[2][1]+m2[3][1], m1[2][2]+m2[3][2]}
+		vec3{m1[0][0]+m2[0][0], m1[0][1]+m2[0][1], m1[0][2]+m2[0][2]},
+		vec3{m1[1][0]+m2[1][0], m1[1][1]+m2[1][1], m1[1][2]+m2[1][2]},
+		vec3{m1[2][0]+m2[2][0], m1[2][1]+m2[2][1], m1[2][2]+m2[2][2]}
 	};
 }
-inline mat3 operator-(const mat3 &m1, const mat3 &m2){
+inline mat3 operator-(mat3 m1,  mat3 m2){
 	return mat3{
-		vec3{m1[0][0]-m2[1][0], m1[0][1]-m2[1][1], m1[0][2]-m2[1][2]},
-		vec3{m1[1][0]-m2[2][0], m1[1][1]-m2[2][1], m1[1][2]-m2[2][2]},
-		vec3{m1[2][0]-m2[3][0], m1[2][1]-m2[3][1], m1[2][2]-m2[3][2]}
+		vec3{m1[0][0]-m2[0][0], m1[0][1]-m2[0][1], m1[0][2]-m2[0][2]},
+		vec3{m1[1][0]-m2[1][0], m1[1][1]-m2[1][1], m1[1][2]-m2[1][2]},
+		vec3{m1[2][0]-m2[2][0], m1[2][1]-m2[2][1], m1[2][2]-m2[2][2]}
 	};
 }
 
@@ -81,6 +85,9 @@ inline vec3 operator*(mat3 m, vec3 v){
 }
 
 inline vec3 operator*(double d, vec3 v) {
+	return {d*v[0], d*v[1], d*v[2]};
+}
+inline vec3 operator*(vec3 v, double d) {
 	return {d*v[0], d*v[1], d*v[2]};
 }
 inline vec3 operator*(float d, vec3 v) { 
@@ -136,7 +143,7 @@ inline std::ostream& operator<<(std::ostream& os, vec6 v) {
 //returns a new quaternion from the input angle and axis
 inline vec4 quaternion(double angle, vec3 axis) {
 	double coeff = sin(angle / 2.0f);
-	return vec4{ cos(angle / 2.0f), coeff*axis[0], coeff*axis[1], coeff*axis[2] };
+	return vec4{ coeff*axis[0], coeff*axis[1], coeff*axis[2], cos(angle / 2.0f) };
 }
 
 //Converts a quaternion to a roation matrix -- try optimizing with non-dynamic memory allocation
@@ -149,35 +156,47 @@ inline mat4 qtomat4(vec4 q) {
 
 	//do some magic here to convert the normalized quaternion to a rotation matrix
 	mat4 m1 = {
-		vec4{ q[0], q[3],-q[2], q[1] },
-		vec4{ -q[3], q[0], q[1], q[2] },
-		vec4{ q[2],-q[1], q[0], q[3] },
-		vec4{ -q[1],-q[2],-q[3], q[0] }
+		vec4{ q[3], q[2],-q[1], q[0] },
+		vec4{ -q[2], q[3], q[0], q[1] },
+		vec4{ q[1],-q[0], q[3], q[2] },
+		vec4{ -q[0],-q[1],-q[2], q[3] }
 	};
 	mat4 m2 = {
-		vec4{ q[0], q[3],-q[2],-q[1] },
-		vec4{ -q[3], q[0], q[1],-q[2] },
-		vec4{ q[2],-q[1], q[0],-q[3] },
-		vec4{ q[1], q[2], q[3], q[0] }
+		vec4{ q[3], q[2],-q[1],-q[0] },
+		vec4{ -q[2], q[3], q[0],-q[1] },
+		vec4{ q[1],-q[0], q[3],-q[2] },
+		vec4{ q[0], q[1], q[2], q[3] }
 	};
 
 	return Mat4Mult(m1, m2);
 }
 
-//Performs the hamilton of two vec4's
-inline vec4 hamilton(vec4 a, vec4 b) {
-	return vec4{
-		a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
-		a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2],
-		a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1],
-		a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0]
+inline mat3 qtomat3(vec4 q){
+	mat3 m4 = {
+		vec3{1.0-2.0*q[1]*q[1]-2.0*q[2]*q[2],   2.0*q[0]*q[1]-2.0*q[2]*q[3],       2.0*q[0]*q[2]+2.0*q[1]*q[3]},
+		vec3{2.0*q[0]*q[1]+2.0*q[2]*q[3],       1.0-2.0*q[0]*q[0]-2.0*q[2]*q[2],   2.0*q[1]*q[2]-2.0*q[0]*q[3]},
+		vec3{2.0*q[0]*q[2]-2.0*q[1]*q[3],       2.0*q[1]*q[2]+2.0*q[0]*q[3],       1.0-2.0*q[0]*q[0]-2.0*q[1]*q[1]}
+	};
+	return m4;
+}
+
+inline mat4 mat3expand(mat3 m){
+	return mat4{
+		vec4{ m[0][0], m[0][1], m[0][2], 0.0 },
+		vec4{ m[1][0], m[1][1], m[1][2], 0.0 },
+		vec4{ m[2][0], m[2][1], m[2][2], 0.0 },
+		vec4{ 0.0, 0.0, 0.0, 1.0 }
 	};
 }
-// quaternion based rotation of vector in global space. angle in degrees
+
+// quaternion based rotation of vector in global space
 inline vec3 qrot(vec3 v, vec4 q) {
-	vec3 u = { q[1],q[2],q[3] };
-	vec3 ret = 2*Dot(u,v)*u + (q[0]*q[0] - Dot(u,u))*v + 2*q[0]*Cross(u,v);
-	return ret;
+	
+	vec3 u = { q[0],q[1],q[2] };
+	vec3 ret = 2*Dot(u,v)*u + (q[3]*q[3] - Dot(u,u))*v + 2*q[3]*Cross(u,v);
+	
+
+	return ret;//qtomat3(q)*v;
 }
 // quaternion based rotation of vector in local space
 inline vec3 qrotl(vec3 v, double angle, vec3 axis) {
@@ -193,10 +212,68 @@ inline vec4 quaternionCompose(vec4 q2, vec4 q1){
 	double qs1 = q1[3];
 	vec3 qv2 = {q2[0],q2[1],q2[2]};
 	vec3 qv1 = {q1[0],q1[1],q1[2]};
-	qs = qs1*qs2 - Dot(qv2,qv1);
-	qv = qs1*qv2+ qs2*qv1 - Cross(qv2, qv1);
+	qs = qs1*qs2 - Dot(qv1,qv2);
+	qv = qs1*qv2 + qs2*qv1 - Cross(qv2, qv1);
 	
 	return vec4{qv[0],qv[1],qv[2],qs};
+}
+inline vec4 qInv(vec4 q){
+	return vec4{-q[0], -q[1], -q[2], q[3]};
+}
+
+inline mat3 inertialInverse(mat3 m){
+	return mat3{
+		vec3{1.0/m[0][0],0.0,0.0},
+		vec3{0.0,1.0/m[1][1],0.0},
+		vec3{0.0,0.0,1.0/m[2][2]}
+	};
+}
+
+inline mat3 crossMat(vec3 v){
+	return mat3{
+		vec3{0.0, -v[2], v[1]},
+		vec3{v[2], 0.0, -v[0]},
+		vec3{-v[1], v[0], 0.0}
+	};
+}
+
+//converts a DCM to a quaternion
+inline vec4 mat3toQuat(mat3 m){
+	/*
+	vec4 q;
+	q[3] = sqrt(1+m[0][0] + m[1][1]+m[2][2])/2.0;
+	q[0] = (m[1][2] - m[2][1])/(4.0*q[3]);
+	q[1] = (m[2][0] - m[0][2])/(4.0*q[3]);
+	q[2] = (m[0][1] - m[1][0])/(4.0*q[3]);
+	*/
+	double tr = m[0][0] + m[1][1] + m[2][2];
+	double S, qw, qx, qy, qz;
+	if (tr > 0.01) { 
+		S = sqrt(tr+1.0) * 2; // S=4*qw 
+		qw = 0.25 * S;
+		qx = (m[2][1] - m[1][2]) / S;
+		qy = (m[0][2] - m[2][0]) / S; 
+		qz = (m[1][0] - m[0][1]) / S; 
+	} else if ((m[0][0] > m[1][1])&(m[0][0] > m[2][2])) { 
+		S = sqrt(1.0 + m[0][0] - m[1][1] - m[2][2]) * 2; // S=4*qx 
+		qw = (m[2][1] - m[1][2]) / S;
+		qx = 0.25 * S;
+		qy = (m[0][1] + m[1][0]) / S; 
+		qz = (m[0][2] + m[2][0]) / S; 
+	} else if (m[1][1] > m[2][2]) { 
+		S = sqrt(1.0 + m[1][1] - m[0][0] - m[2][2]) * 2; // S=4*qy
+		qw = (m[0][2] - m[2][0]) / S;
+		qx = (m[0][1] + m[1][0]) / S; 
+		qy = 0.25 * S;
+		qz = (m[1][2] + m[2][1]) / S; 
+	} else { 
+		S = sqrt(1.0 + m[2][2] - m[0][0] - m[1][1]) * 2; // S=4*qz
+		qw = (m[1][0] - m[0][1]) / S;
+		qx = (m[0][2] + m[2][0]) / S;
+		qy = (m[1][2] + m[2][1]) / S;
+		qz = 0.25 * S;
+	}
+	return vec4{qx, qy, qz, qw};	
 }
 
 // Returns an identity mat4
@@ -239,6 +316,19 @@ inline mat4 Mat4Mult(mat4 &m1, const mat4 &m2) {
 	for (int i = 0; i < 4; i++) {
 		for (int j = 0; j < 4; j++) {
 			for (int k = 0; k < 4; k++) {
+				//possibly optimize with a conditional for sparce matrices?
+				retmat[i][j] += m1[i][k] * m2[k][j];
+			}
+		}
+	}
+	return retmat;
+}
+inline mat3 Mat3Mult(mat3 &m1, mat3 &m2) {
+	mat3 retmat = zeros3();
+
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 3; j++) {
+			for (int k = 0; k < 3; k++) {
 				//possibly optimize with a conditional for sparce matrices?
 				retmat[i][j] += m1[i][k] * m2[k][j];
 			}
@@ -493,9 +583,20 @@ inline std::array<vec3,2> oe2rv(vec6 oe, double mu){
 }
 
 inline double cubicInterpolation(double f0, double f1, double fp0, double fp1, double x) {
+	
 	double a = 2 * f0 + fp0 - 2 * f1 + fp1;
 	double b = -3 * f0 -2 * fp0 + 3 * f1 - fp1;
 	return a * x*x*x + b * x*x + fp0 * x + f0;
+}
+
+inline vec3 positionInterpolation(vec3 p1, vec3 p2, vec3 v1, vec3 v2, double t0, double t1, double t){
+	double timeFrac = (t - t0) / (t1 - t0);
+    double slopeFac = abs(t1 - t0);
+
+	double r1 = cubicInterpolation(p1[0],p2[0],slopeFac*v1[0],slopeFac*v2[0],timeFrac);
+	double r2 = cubicInterpolation(p1[1],p2[1],slopeFac*v1[1],slopeFac*v2[1],timeFrac);
+	double r3 = cubicInterpolation(p1[2],p2[2],slopeFac*v1[2],slopeFac*v2[2],timeFrac);
+	return {r1, r2, r3};
 }
 
 inline mat4 getFrameTransformSpice(double julian, std::string from, std::string to){

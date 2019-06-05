@@ -9,8 +9,8 @@ Camera::Camera(GLFWwindow * window, int width, int height, double julianTime) {
 	this->winHeight = height;
 	this->curBody = solarSystem->Planets["earth"];
 	this->aspect = 16.0 / 9.0;
-	this->nearClip = 1000;
-	this->farClip = 10E9;
+	this->nearClip = 100;
+	this->farClip = 10E8;
 	this->fovy = 45.0;
 	this->flare = new LensFlare(this);
 	this->gui = new GUI(this);
@@ -96,8 +96,6 @@ void Camera::updateShaderUniforms() {
 			planet->atmoMat->matShader->setUniformV3("camPos", this->position);
 		}
 	}
-	
-	
 }
 
 void Camera::drawFlare(){
@@ -109,7 +107,7 @@ void Camera::frameResize(int width, int height) {
 	this->winHeight = height;
 	this->aspect = (float)width / (float)height;
 	this->projectionMat = ProjectionMat(radians(this->fovy), this->aspect, this->nearClip, this->farClip);
-	this->craftProjMat = ProjectionMat(radians(this->fovy), this->aspect, this->nearClip, this->farClip);
+	this->craftProjMat = ProjectionMat(radians(this->fovy), this->aspect, 0.0001, 1000.0);
 	this->orthoMat = OrthographicMat(0.0, width, 0.0, height, 0.0, 1.0);
 	this->gui->resize(width, height);
 	this->flare->updateOrtho(this->getOrthoPtr());
@@ -213,12 +211,10 @@ void Camera::scroll_callback(GLFWwindow * window, double xoffset, double yoffset
 	this->moveSpeed = this->distance / 4.0;
 	this->distance -= yoffset * this->moveSpeed;
 	vec3 bodyScale = this->curMesh->getScale();
-	if (this->distance < (bodyScale[0] + this->nearClip))
-		this->distance = (bodyScale[0] + this->nearClip);
+	if (this->distance < (bodyScale[0]*1.1))
+		this->distance = (bodyScale[0]*1.1);
 	if (this->distance > 5000000000.0f)
 		this->distance = 5000000000.0f;
-	string altStr = "Alt: " + to_string(this->distance);
-	this->gui->updateText("alt", altStr);
 }
 
 //mouse button callback
@@ -305,6 +301,7 @@ void Camera::selectBody(PlanetaryBody* body){
 	this->curBody = body;
 	this->curMesh = this->curBody->bodyMesh;
 	this->curCraft = NULL;
+	this->curMission = NULL;
 	vec3 bodyScale = this->curMesh->getScale();
 	this->distance = bodyScale[0] * 2.5 + this->nearClip;
 	this->moveSpeed = this->distance / 2.0;
@@ -324,6 +321,7 @@ void Camera::selectBody(PlanetaryBody* body){
 }
 void Camera::selectBody(Spacecraft* craft){
 	this->curBody = NULL;
+	this->curMission = NULL;
 	this->curCraft = craft;
 	this->curMesh = this->curCraft->bodyMesh;
 
@@ -343,6 +341,13 @@ void Camera::selectBody(Spacecraft* craft){
 	this->gui->updateText("lat", latStr);
 	string lonStr = "Lon" + to_string(degrees(this->inlon));
 	this->gui->updateText("lon", lonStr);
+}
+void Camera::selectMission(Mission* mission){
+	this->curMission=mission;
+}
+void Camera::selectStage(substage stg){
+	this->curMesh = stg.obj;
+	this->distance = this->curMesh->getScale()[0] * 2.5;
 }
 
 //#################################################################################

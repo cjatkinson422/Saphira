@@ -84,8 +84,14 @@ PlanetaryBody::PlanetaryBody(string name, string idCode, string shaderType, bool
 		bodyMat->matShader->setUniform1f("sun.attn_str", sunStr);
 		bodyMat->matShader->setUniform1f("sun.attn_lin", sunLin);
 		bodyMat->matShader->setUniform1f("sun.attn_quad", sunQuad);
-
-		
+		if(shaderType == "planet"){
+			float innerRadius = this->bodyMesh->getScale()[0];
+			float outerRadius = innerRadius*1.025;
+			bodyMat->matShader->setUniform1f("fInnerRadius", innerRadius);
+			bodyMat->matShader->setUniform1f("fOuterRadius", outerRadius );
+			bodyMat->matShader->setUniform1f("fOuterRadius2", pow((outerRadius),2));
+			bodyMat->matShader->setUniformV3("v3InvWavelength", vec3f{(float)properties["atmo_r"],(float)properties["atmo_g"],(float)properties["atmo_b"]});
+		}
 	}
 	if (ringMat != NULL) {
 		ringMat->matShader->setUniformV3("sun.color", vec3f{ 1.0f,1.0f,0.95f });
@@ -97,13 +103,13 @@ PlanetaryBody::PlanetaryBody(string name, string idCode, string shaderType, bool
 	if (atmoMat != NULL) {
 		float innerRadius = this->bodyMesh->getScale()[0];
 		float outerRadius = this->atmoMesh->getScale()[0];
-		float atmoHeight = outerRadius-innerRadius;
 		atmoMat->matShader->setUniform1f("fInnerRadius", innerRadius);
 		atmoMat->matShader->setUniform1f("fOuterRadius", outerRadius );
 		atmoMat->matShader->setUniform1f("fOuterRadius2", pow((outerRadius),2));
 		bodyMat->matShader->setUniform1f("fInnerRadius", innerRadius);
 		bodyMat->matShader->setUniform1f("fOuterRadius", outerRadius );
 		bodyMat->matShader->setUniform1f("fOuterRadius2", pow((outerRadius),2));
+		atmoMat->matShader->setUniformV3("v3InvWavelength", vec3f{(float)properties["atmo_r"],(float)properties["atmo_g"],(float)properties["atmo_b"]});
 	}
 	
 }	
@@ -231,7 +237,7 @@ void PlanetaryBody::updateAttitude(double julian){
 }
 
 vec3 PlanetaryBody::calculateAbsoluteAccelerationFromPosition(double julian, vec3 pos){
-	double unitConv = 86400.0*86400.0; // seconds/day
+	double unitConv = 86400.0*86400.0; // seconds2/day2
 	statevec pstate = this->getStateAtTime(julian);
 	vec3 dir = pstate[0] - pos;
 	double r = len(dir);
@@ -350,7 +356,7 @@ void PlanetaryBody::drawLines() {
 		glDrawArrays(GL_LINE_STRIP, 0, lineDataSize);
 
 		// Draw attitude lines
-		modelMat = TransMat(this->position)*this->getAttitude();
+		modelMat = TransMat(this->position);//*this->getAttitude();
 		lineMat->matShader->setUniform4dv("model", &modelMat[0][0]);
 		glBindVertexArray(axisVAO);
 		glDrawArrays(GL_LINES, 0, 6);
@@ -496,6 +502,7 @@ PlanetarySystem::PlanetarySystem() {
 	furnsh_c("pck00010.tpc");
 	furnsh_c("de-403-masses.tpc");
 	furnsh_c("geophysical.ker");
+	furnsh_c("Ephemeris/jup329.bsp");
 }
 
 void PlanetarySystem::loadPlanets() {
@@ -506,7 +513,7 @@ void PlanetarySystem::loadPlanets() {
 	++nrPlanets; printf("\n");
 	
 	//earth loader
-	Earth* earth = new Earth("earth", "399", "planet", true, false, false, true);
+	Earth* earth = new Earth("earth", "399", "planet", false, false, false, true);
 	earth->systemIndex = nrPlanets;
 	this->Planets.insert({"earth", earth});
 	++nrPlanets; printf("\n");
@@ -515,6 +522,13 @@ void PlanetarySystem::loadPlanets() {
 	Luna* luna = new Luna("moon", "301", "DS_1", true, false, false, false, this->Planets["earth"]);
 	this->Planets["earth"]->children.push_back(luna);
 
+	//jupiter loader
+	/*
+	PlanetaryBody* jupiter = new PlanetaryBody("jupiter", "599", "planet", false, false, false, false);
+	jupiter->systemIndex = nrPlanets;
+	this->Planets.insert({"jupiter", jupiter});
+	++nrPlanets; printf("\n");
+	
 	//mars loader
 	PlanetaryBody* mars = new PlanetaryBody("mars", "4", "DS_1", true, false, false, false);
 	mars->systemIndex = nrPlanets;
@@ -526,7 +540,7 @@ void PlanetarySystem::loadPlanets() {
 	saturn->systemIndex = nrPlanets;
 	this->Planets.insert({"saturn", saturn});
 	++nrPlanets; printf("\n");
-
+	*/
 }
 
 void PlanetarySystem::draw() {
@@ -536,6 +550,9 @@ void PlanetarySystem::draw() {
 	for(auto const& [name, craft] : this->spacecrafts){
 		if(craft->shouldDraw)
 			craft->draw();
+	}
+	for(auto const& [name, mission]: this->missions){
+		mission->drawLines();
 	}
 
 }
@@ -558,6 +575,10 @@ void PlanetarySystem::setUniform4dv(const char * uniformName, double * uniformPt
 	for(auto const& [name,craft] : this->spacecrafts){
 		craft->setUniform4dv(uniformName, uniformPtr);
 	}
+	for(auto const& [name, mission] : this->missions){
+		mission->setUniform4dv(uniformName, uniformPtr);
+		mission->setUniform4dvCraft(uniformName, uniformPtr);
+	}
 
 }
 
@@ -570,6 +591,9 @@ void PlanetarySystem::setUniformV3(const char * uniformName, float * vec) {
 	for(auto const& [name,craft] : this->spacecrafts){
 		craft->setUniformV3(uniformName, vec);
 	}
+	for(auto const& [name, mission] : this->missions){
+		mission->setUniformV3(uniformName, vec);
+	}
 }
 
 void PlanetarySystem::setUniformV3(const char * uniformName, double * vec) {
@@ -580,6 +604,9 @@ void PlanetarySystem::setUniformV3(const char * uniformName, double * vec) {
 	}
 	for(auto const& [name,craft] : this->spacecrafts){
 		craft->setUniformV3(uniformName, vec);
+	}
+	for(auto const& [name, mission] : this->missions){
+		mission->setUniformV3(uniformName, vec);
 	}
 }
 
@@ -592,6 +619,9 @@ void PlanetarySystem::setUniformV3(const char * uniformName, vec3f vec) {
 	for(auto const& [name,craft] : this->spacecrafts){
 		craft->setUniformV3(uniformName, vec);
 	}
+	for(auto const& [name, mission] : this->missions){
+		mission->setUniformV3(uniformName, vec);
+	}
 }
 
 void PlanetarySystem::setUniformV3(const char * uniformName, vec3 vec) {
@@ -602,6 +632,9 @@ void PlanetarySystem::setUniformV3(const char * uniformName, vec3 vec) {
 	}
 	for(auto const& [name,craft] : this->spacecrafts){
 		craft->setUniformV3(uniformName, vec);
+	}
+	for(auto const& [name, mission] : this->missions){
+		mission->setUniformV3(uniformName, vec);
 	}
 }
 
@@ -618,6 +651,30 @@ double PlanetarySystem::getClosestPlanetDistance(vec3 position) {
 		}
 	}
 	return dist;
+}
+
+PlanetaryBody* PlanetarySystem::getSOI(vec3 position, double julian){
+	PlanetaryBody* sun = Planets["sun"];
+	for (auto const& [name, planet]: Planets){
+		if(name != "sun"){
+			vec3 planPos = planet->getStateAtTime(julian)[0];
+			for(auto const& moon : planet->children){
+				double d = len(planPos - moon->getStateAtTime(julian)[0]);
+				double SOI = d*pow(moon->mu / planet->mu, 0.4);
+				d = len(position - moon->getStateAtTime(julian)[0]);
+				if(d < SOI){
+					return moon;
+				}
+			}
+			double d = len(sun->getStateAtTime(julian)[0] - planPos);
+			double SOI = d*pow(planet->mu / sun->mu, 0.4);
+			d = len(position - planPos);
+			if(d < SOI){
+				return planet;
+			}
+		}
+	}
+	return sun;
 }
 
 void PlanetarySystem::updatePlanetPositions(double julian)
@@ -638,6 +695,17 @@ void PlanetarySystem::updatePlanetPositions(double julian)
 		}
 		else{
 			craft->shouldDraw = false;
+		}
+	}
+	for( auto const& [name, mission] : this->missions){
+		for( auto const& stage : mission->stages){
+			if(stage->getYeet() <= julian && julian < stage->getYote()){
+				stage->shouldDraw = true;
+				stage->interpToTime(julian);
+			}
+			else{
+				stage->shouldDraw = false;
+			}
 		}
 	}
 }
@@ -734,7 +802,6 @@ vec3 Luna::calculateAbsoluteAccelerationFromPosition(double julian, vec3 positio
 	double ak = -unitConv*(3*J2*mu*Re2*pos[2] / (2 * r5))*(3 - 5*pos[1]*pos[1] / (r2));
 	vec3 j2acc = vec3{ ai, aj, ak};
 	j2acc = (att)*j2acc;
-	
 	acceleration += j2acc;
 
 	return acceleration;

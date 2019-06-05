@@ -1,15 +1,19 @@
 #pragma once
 #include <iostream>
 #include <functional>
+#include "OdeSolver.h"
 #include "Transforms.h"
 #include "Planet.h"
-#include "OdeSolver.h"
+
 
 #if defined _WIN32 || defined _WIN64
 #define fscanf fscanf_s
 #endif
 
 class PlanetaryBody;
+struct spacecraftState;
+struct state;
+typedef std::function<spacecraftState(double, spacecraftState)> scStateFunc;
 
 class Spacecraft {
 private:
@@ -21,15 +25,15 @@ private:
 	vec3 position;
 	vec3 velocity;
 	vec3 angularVelocity;
+	mat3 attitude;
 
-	spacecraftState Spacecraft::dynamicsEquation(double time, spacecraftState cs);
+	spacecraftState dynamicsEquation(double time, spacecraftState cs);
 	vec3 motionEqnBarycentric(double time, vec3 position);
 
 public:
 
 	string name;
 	vector<spacecraftState> propagationData;
-	unsigned long curEphIndex = 0;
 	bool shouldDraw = false;
 
 	SceneObject* bodyMesh = NULL;
@@ -47,6 +51,7 @@ public:
 	void addVel(vec3 vel);
 	void setPosition(vec3 pos);
 	void setVelocity(vec3 vel);
+	void setAttitude(mat3 q);
 	
 	double getMass();
 	double getYeet();
@@ -66,9 +71,7 @@ public:
 
 	void interpToTime(double julian);
 
-	state interpEphIndex(double julian);
-	void updateCurEphIndex(double julian);
-	state interpbodyState(state ps1, state ps2, double julian);
+	spacecraftState interpEphIndex(double julian);
 
 
 	void draw();
