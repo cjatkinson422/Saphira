@@ -1,5 +1,6 @@
 # Saphira
 Basic spaceflight simulation software
+
 Requirements: Mac OSX, graphics card capable of supporting OpenGL 410 Core
 Not all required resources are included in this repository. The DE 435 planetary Ephemerides files, shaders, some textures, etc. are not uploaded.
 
